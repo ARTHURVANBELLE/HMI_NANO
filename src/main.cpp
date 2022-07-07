@@ -2,6 +2,8 @@
 #include <SPI.h>  
 #include <RF24.h>
 #include <U8glib.h>
+#include <RH_NRF24.h>
+#include <nRF24L01.h>
 
 const int IN_GAR = 4;
 const int IN_PUM = 2;
@@ -36,10 +38,15 @@ char jar[12];
 char pom[12];
 char pou[12];
 
+/*
 RF24 myRadio (9, 10);
 byte addresses[][6] = {"0"};
+*/
+
+RH_NRF24 nrf24(10,9);
 
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE);	// I2C / TWI 
+
 
 struct package {
   int mode;
@@ -74,14 +81,20 @@ void oledUpdate() {
   } while( u8g.nextPage() );
 }
 
+
 void txData(){
   //delay(200);
-
+/*
   myRadio.stopListening();
   myRadio.openWritingPipe(addresses[0]);
   myRadio.write(&sent, sizeof(sent));
   myRadio.openReadingPipe(1, addresses[0]);
   //myRadio.startListening();
+*/
+
+  uint8_t data[] = " hello there";
+  nrf24.send(data, sizeof(data));
+  nrf24.waitPacketSent();
 }
 
 void rxData(){
@@ -93,7 +106,7 @@ void setup()
   
   Serial.begin(115200);
   Serial.println("1");
-
+/*
   delay(1000);
   
   myRadio.begin();  
@@ -103,6 +116,15 @@ void setup()
   
   myRadio.openReadingPipe(1, addresses[0]);
   myRadio.startListening();
+*/
+if (!nrf24.init())
+  Serial.println("init failed");
+// Defaults after init are 2.402 GHz (channel 2), 2Mbps, 0dBm
+if (!nrf24.setChannel(1))
+  Serial.println("setChannel failed");
+if (!nrf24.setRF(RH_NRF24::DataRate2Mbps, RH_NRF24::TransmitPower0dBm))
+  Serial.println("setRF failed");   
+Serial.println("setup Done") ;
 
   Serial.println("2");
 }
