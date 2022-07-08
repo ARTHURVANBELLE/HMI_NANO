@@ -5,6 +5,9 @@
 #include <RH_NRF24.h>
 #include <nRF24L01.h>
 
+#define CLIENT_ADDRESS 1
+#define SERVER_ADDRESS 2
+
 const int IN_GAR = 4;
 const int IN_PUM = 2;
 const int IN_CHI = 6;
@@ -14,8 +17,9 @@ int currentTime;
 bool estate = 0;
 int place = 0;
 const int RH_RF24_MAX_MESSAGE_LEN = 25;
+bool flagRx;
 
-bool modeA;
+int modeA = 0;
 bool niv1;
 bool niv2;
 
@@ -33,68 +37,85 @@ bool currentState_3;
 
 
 // variables oled
-char mode[12];
+char mode[13];
 char jar[12];
 char pom[12];
 char pou[12];
 
-/*
-RF24 myRadio (9, 10);
-byte addresses[][6] = {"0"};
-*/
-
 RH_NRF24 nrf24(10,9);
+RHReliableDatagram manager(nrf24, CLIENT_ADDRESS);
 
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE);	// I2C / TWI 
 
 
-struct package {
-  int mode;
-  bool chi;
-  bool pum;
-  bool gar;
-  bool niv1;
-  bool niv2;
-  int lev;
-};
-
-typedef struct package Package;
-Package dataRecieve;
-Package dataTransmit;
-
-char sent[15] = " HELLO THERE ";
-
 void oledUpdate() {
 
-  char var[5];
-
-  sprintf(var,"%d",analogRead(A0));
-  
-  u8g.firstPage();  
-  do {
+  if (flagRx){
+    char var[5];
+    
+    sprintf(var,"%d",analogRead(A0)/128);
+    
+    u8g.firstPage();  
+    do {
+      u8g.setFont(u8g_font_unifont);
+      u8g.drawStr(0,12,mode);
+      u8g.drawStr(0,24,pom);
+      u8g.drawStr(0,36,jar);
+      u8g.drawStr(0,48, pou);
+      if (modeA == 0){
+        u8g.drawStr(100,12,var);
+      }
+    } while( u8g.nextPage() );
+  }
+  else{
+    u8g.firstPage();  
+    do {
     u8g.setFont(u8g_font_unifont);
-    u8g.drawStr(0,12,mode);
-    u8g.drawStr(0,24,pom);
-    u8g.drawStr(0,36,jar);
-    u8g.drawStr(0,48, pou);
-    u8g.drawStr(90,12,var);
-  } while( u8g.nextPage() );
+    u8g.drawStr(20,12,"UNREACHED");
+    } while( u8g.nextPage() );
+
+  }
 }
 
 
 void txData(){
-  //delay(200);
-/*
-  myRadio.stopListening();
-  myRadio.openWritingPipe(addresses[0]);
-  myRadio.write(&sent, sizeof(sent));
-  myRadio.openReadingPipe(1, addresses[0]);
-  //myRadio.startListening();
-*/
 
-  uint8_t data[] = " hello there";
+  uint8_t data[25] ;
+  char rxMessage[12];
+
+  sprintf(data,"%i%d%d%d",modeA,gar,pum,chi);
+
   nrf24.send(data, sizeof(data));
   nrf24.waitPacketSent();
+  // Now wait for a reply
+  uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];
+  uint8_t len = sizeof(buf);
+
+  int x = 0;
+  flagRx = 0;
+
+  if (nrf24.waitAvailableTimeout(500))
+  { 
+    // Should be a reply message for us now   
+    if (nrf24.recv(buf, &len))
+    {
+      Serial.print("got reply: ");
+      Serial.println((char*)buf);
+      sprintf(rxMessage,"%s",buf);
+      flagRx = 1;
+    }
+    else
+    {
+      Serial.println("recv failed");
+      flagRx = 0;
+    }
+  }
+  else
+  {
+    Serial.println("No reply, is nrf24_encrypted_server running?");
+  }
+  delay(400);
+
 }
 
 void rxData(){
@@ -106,17 +127,7 @@ void setup()
   
   Serial.begin(115200);
   Serial.println("1");
-/*
-  delay(1000);
-  
-  myRadio.begin();  
-  myRadio.setChannel(115); 
-  myRadio.setPALevel(RF24_PA_MAX);
-  myRadio.setDataRate( RF24_250KBPS );
-  
-  myRadio.openReadingPipe(1, addresses[0]);
-  myRadio.startListening();
-*/
+
 if (!nrf24.init())
   Serial.println("init failed");
 // Defaults after init are 2.402 GHz (channel 2), 2Mbps, 0dBm
@@ -142,15 +153,17 @@ void loop()
 
   if (currentState != lastState && currentState ==1)
   {
-    if (modeA){
-      modeA = 0;
-      dataTransmit.mode = 0;
+    if (modeA == 0){
+      modeA = 1;
       sprintf(mode,"mode : MANU");
     }
-    else {
+    else if (modeA == 1){
+      modeA = 2;
+      sprintf(mode,"mode : EXTRA");
+    }
+    else if (modeA == 2){
+      modeA = 0;
       sprintf(mode,"mode : AUTO");
-      modeA = 1;
-      dataTransmit.mode = 1;
     }
     txData();
   }
@@ -159,13 +172,13 @@ void loop()
   {
     if (chi){
       chi = 0;
-      dataTransmit.chi = chi;
+     
       sprintf(pou,"chicken:OFF");
     }
     else {
       sprintf(pou,"chicken: ON");
       chi = 1;
-      dataTransmit.chi = chi;
+ 
       
     }
     txData();
@@ -176,12 +189,12 @@ void loop()
     if (gar){
       sprintf(jar,"garden:OFF");
       gar = 0;
-      dataTransmit.gar = gar;
+
     }
     else {
       sprintf(jar,"garden: ON");
       gar = 1;
-      dataTransmit.gar = gar;
+
     }
     txData();
   }
