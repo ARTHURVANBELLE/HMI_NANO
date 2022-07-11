@@ -4,6 +4,7 @@
 #include <U8glib.h>
 #include <RH_NRF24.h>
 #include <nRF24L01.h>
+#include <RHReliableDatagram.h>
 
 #define CLIENT_ADDRESS 1
 #define SERVER_ADDRESS 2
@@ -17,7 +18,11 @@ int currentTime;
 bool estate = 0;
 int place = 0;
 const int RH_RF24_MAX_MESSAGE_LEN = 25;
-bool flagRx;
+bool flagRx = 1;
+
+uint8_t buf[RH_RF24_MAX_MESSAGE_LEN];
+uint8_t data[25] ;
+char rxMessage[12];
 
 int modeA = 0;
 bool niv1;
@@ -78,55 +83,43 @@ void oledUpdate() {
 }
 
 
+
 void txData(){
 
-  uint8_t data[25] ;
-  char rxMessage[12];
+ sprintf(data,"%i%d%d%d",modeA,gar,pum,chi);
 
-  sprintf(data,"%i%d%d%d",modeA,gar,pum,chi);
-
-  nrf24.send(data, sizeof(data));
-  nrf24.waitPacketSent();
-  // Now wait for a reply
-  uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];
-  uint8_t len = sizeof(buf);
-
-  int x = 0;
-  flagRx = 0;
-
-  if (nrf24.waitAvailableTimeout(500))
-  { 
-    // Should be a reply message for us now   
-    if (nrf24.recv(buf, &len))
+ if (manager.sendtoWait(data, sizeof(data), SERVER_ADDRESS))
+  {
+    // Now wait for a reply from the server
+    uint8_t len = sizeof(buf);
+    uint8_t from;   
+    if (manager.recvfromAckTimeout(buf, &len, 2000, &from))
     {
-      Serial.print("got reply: ");
+      Serial.print("got reply from : 0x");
+      Serial.print(from, HEX);
+      Serial.print(": ");
       Serial.println((char*)buf);
-      sprintf(rxMessage,"%s",buf);
-      flagRx = 1;
     }
     else
     {
-      Serial.println("recv failed");
-      flagRx = 0;
+      Serial.println("No reply, is rf24_reliable_datagram_server running?");
     }
   }
   else
-  {
-    Serial.println("No reply, is nrf24_encrypted_server running?");
-  }
-  delay(400);
+    Serial.println("sendtoWait failed");
+  delay(500);
 
 }
 
-void rxData(){
-
-}
 
 void setup() 
 {
   
   Serial.begin(115200);
   Serial.println("1");
+
+if (!manager.init())
+    Serial.println("init manager failed");
 
 if (!nrf24.init())
   Serial.println("init failed");
