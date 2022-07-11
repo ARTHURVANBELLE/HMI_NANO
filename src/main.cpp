@@ -6,8 +6,6 @@
 #include <nRF24L01.h>
 #include <RHReliableDatagram.h>
 
-#define CLIENT_ADDRESS 1
-#define SERVER_ADDRESS 2
 
 const int IN_GAR = 4;
 const int IN_PUM = 2;
@@ -18,13 +16,11 @@ int currentTime;
 bool estate = 0;
 int place = 0;
 const int RH_RF24_MAX_MESSAGE_LEN = 25;
-bool flagRx = 1;
+bool flagRx = 0;
+char rxMessage[10];
 
-uint8_t buf[RH_RF24_MAX_MESSAGE_LEN];
-uint8_t data[25] ;
-char rxMessage[12];
 
-int modeA = 0;
+int modeA = 1;
 bool niv1;
 bool niv2;
 
@@ -47,8 +43,10 @@ char jar[12];
 char pom[12];
 char pou[12];
 
+uint8_t buf[RH_RF24_MAX_MESSAGE_LEN];
+uint8_t len = sizeof(buf);
+
 RH_NRF24 nrf24(10,9);
-RHReliableDatagram manager(nrf24, CLIENT_ADDRESS);
 
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE);	// I2C / TWI 
 
@@ -59,23 +57,45 @@ void oledUpdate() {
     char var[5];
     
     sprintf(var,"%d",analogRead(A0)/128);
-    
+
+    if (modeA == 1){
+      sprintf(mode,"Mode:AUTO");
+    }
+    else if(modeA == 0){
+      sprintf(mode,"Mode:MANU");
+    }
+    else if(modeA == 2){
+      sprintf(mode,"Mode:EXTRA");
+    }
+
+    if (gar){
+      sprintf(jar,"Garden:ON");
+    }
+    else{
+      sprintf(jar,"Garden:OFF");
+    }
+
+    if (chi){
+      sprintf(pou,"Chicken:ON");
+    }
+    else{
+      sprintf(pou,"chicken:OFF");
+    }
+
     u8g.firstPage();  
     do {
       u8g.setFont(u8g_font_unifont);
-      u8g.drawStr(0,12,mode);
-      u8g.drawStr(0,24,pom);
-      u8g.drawStr(0,36,jar);
-      u8g.drawStr(0,48, pou);
-      if (modeA == 0){
-        u8g.drawStr(100,12,var);
-      }
+      u8g.drawStr(1,16,mode);
+      u8g.drawStr(1,32,pom);
+      //u8g.drawStr(0,48,jar);
+      //u8g.drawStr(0,64,pou);
     } while( u8g.nextPage() );
   }
   else{
     u8g.firstPage();  
     do {
     u8g.setFont(u8g_font_unifont);
+    u8g.setContrast(analogRead(A0)/4);
     u8g.drawStr(20,12,"UNREACHED");
     } while( u8g.nextPage() );
 
@@ -84,32 +104,66 @@ void oledUpdate() {
 
 
 
-void txData(){
+void rxData(){
 
- sprintf(data,"%i%d%d%d",modeA,gar,pum,chi);
-
- if (manager.sendtoWait(data, sizeof(data), SERVER_ADDRESS))
+  if (nrf24.available())
   {
-    // Now wait for a reply from the server
-    uint8_t len = sizeof(buf);
-    uint8_t from;   
-    if (manager.recvfromAckTimeout(buf, &len, 2000, &from))
-    {
-      Serial.print("got reply from : 0x");
-      Serial.print(from, HEX);
-      Serial.print(": ");
-      Serial.println((char*)buf);
-    }
-    else
-    {
-      Serial.println("No reply, is rf24_reliable_datagram_server running?");
-    }
-  }
-  else
-    Serial.println("sendtoWait failed");
-  delay(500);
+    // Should be a message for us now   
+    
 
+    if (nrf24.recv(buf, &len))
+    {
+      Serial.print("message: ");
+      Serial.println((char*)buf);
+      sprintf(rxMessage,"%s",(char*)buf);
+    }
+    Serial.println(rxMessage);
+      
+    int proto = atoi(rxMessage);
+    Serial.println(proto);
+
+    if (proto >= 20000){
+      Serial.println("MODE EXTRA RX");
+      proto -= 20000;
+      modeA = 2;
+    }
+    else if (proto >= 10000){
+      Serial.println("MODE MANU RX");
+      proto -= 10000;
+      modeA = 1;
+    }
+    else if(proto>= 30000){
+      Serial.println("MODE AUTO RX");
+      modeA = 0;
+    }
+
+    if (proto >= 1000){
+      gar =0;
+      proto -= 1000;
+    }
+    else{
+      gar =1;
+    }   
+
+    if (proto >= 100){
+      pum = 0;
+      proto -= 100;
+    }  
+    else{
+      pum = 1;
+    }
+
+    if (proto == 10){
+      chi = 0;
+    }
+    else{
+      chi = 1;
+    }
+    
+    flagRx = 1;
+  }
 }
+
 
 
 void setup() 
@@ -117,9 +171,6 @@ void setup()
   
   Serial.begin(115200);
   Serial.println("1");
-
-if (!manager.init())
-    Serial.println("init manager failed");
 
 if (!nrf24.init())
   Serial.println("init failed");
@@ -136,79 +187,10 @@ Serial.println("setup Done") ;
 void loop()
 {
   oledUpdate();
+  rxData();
 
-
-  currentState = digitalRead(8);
   currentState_1 = digitalRead(IN_GAR);
-  currentState_2 = digitalRead(IN_PUM);
-  currentState_3 = digitalRead(IN_CHI);
-  currentTime = millis();
 
-  if (currentState != lastState && currentState ==1)
-  {
-    if (modeA == 0){
-      modeA = 1;
-      sprintf(mode,"mode : MANU");
-    }
-    else if (modeA == 1){
-      modeA = 2;
-      sprintf(mode,"mode : EXTRA");
-    }
-    else if (modeA == 2){
-      modeA = 0;
-      sprintf(mode,"mode : AUTO");
-    }
-    txData();
-  }
-
-  if (currentState_3 != lastState_3 && currentState_3 ==1)
-  {
-    if (chi){
-      chi = 0;
-     
-      sprintf(pou,"chicken:OFF");
-    }
-    else {
-      sprintf(pou,"chicken: ON");
-      chi = 1;
- 
-      
-    }
-    txData();
-  }
-
-  if (currentState_1 != lastState_1 && currentState_1 ==1)
-  {
-    if (gar){
-      sprintf(jar,"garden:OFF");
-      gar = 0;
-
-    }
-    else {
-      sprintf(jar,"garden: ON");
-      gar = 1;
-
-    }
-    txData();
-  }
-
-  if (currentState_2 != lastState_2 && currentState_2 ==1)
-  {
-    if (pum){
-      sprintf(pom,"pump : OFF");
-      pum = 0;
-    }
-    else {
-      sprintf(pom,"pump :  ON");
-      pum = 1;
-    }
-    txData();
-  }
-
-
-  lastState = currentState; 
   lastState_1 = currentState_1;
-  lastState_2 = currentState_2;
-  lastState_3 = currentState_3;
 
 }
