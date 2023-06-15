@@ -166,7 +166,7 @@ void oledUpdate() {
         sprintf(info_3,"auto refill");
         sprintf(info_4,"chiken/2h");
       }
-      else if(modeA == 0){
+      else if(modeA == 3){
         sprintf(info_1,"mode MANU");
         sprintf(info_2,"everything is possible");
         sprintf(info_3,"c'est koh-lanta");
@@ -249,39 +249,44 @@ void rxData(){
 }
 
 void txData(){
-   if (digitalRead(pump) && !oldstate_p){
-  Serial.println("pump");
+ if (digitalRead(pump) && !oldstate_p){
+  sprintf(messageTx,"%d-%d-%d-%d",chi, gar, modeA, !oldstate_p);
   oldstate_p = 1;
  }
  else {
   oldstate_p = 0;
  }
  if (digitalRead(chicken) && !oldstate_c){
-  Serial.println("chicken");
+  sprintf(messageTx,"%d-%d-%d-%d",!chi, gar, modeA, oldstate_p);
   oldstate_c = 1;
  }
  else {
   oldstate_c = 0;
  }
  if (digitalRead(garden) && !oldstate_g){
-  Serial.println("garden");
+  sprintf(messageTx,"%d-%d-%d-%d",chi, !gar, modeA, oldstate_p);
   oldstate_g = 1;
  }
  else {
   oldstate_g = 0;
  }
  if (digitalRead(mode) && !oldstate_m){
-  Serial.println("mode");
+  if (modeA <3){                                                //cycle modeA   0 --> 3 --> 0 ...
+    modeA += 1;
+  }
+  else {
+    modeA = 1;
+  }
+  sprintf(messageTx,"%d-%d-%d-%d",chi, !gar, modeA, oldstate_p);
   oldstate_m = 1;
  }
  else {
   oldstate_m = 0;
  }
 
- if (oldstate_c || oldstate_g || oldstate_m || oldstate_p){
-  sprintf(messageTx,"%d-%d-%d-%d",oldstate_c, oldstate_g, oldstate_m, oldstate_p);
+ if (oldstate_c || oldstate_g || oldstate_m || oldstate_p){     //appui sur un des boutons
   radio.stopListening();                                //This sets the module as transmitter
-  radio.write(&messageTx, sizeof(messageTx));               //Sending the data
+  radio.write(&messageTx, sizeof(messageTx));           //Sending the data
   Serial.println(messageTx);
   delay(20);
   radio.startListening();
